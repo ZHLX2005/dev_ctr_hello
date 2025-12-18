@@ -37,6 +37,8 @@ jobs:
         timeout: 30s
         command_timeout: 10m
         script: |
+          # 使用bash执行脚本
+          bash -c '
           # 设置变量
           IMAGE_NAME="ghcr.io/zhlx2005/dev_ctr_hello"
           CONTAINER_NAME="dev_ctr_hello_app"
@@ -56,7 +58,7 @@ jobs:
           echo "Starting new container..."
           docker run -d \
             --name $CONTAINER_NAME \
-            -p 8080:8080 \
+            -p 8988:8080 \
             --restart unless-stopped \
             $IMAGE_NAME:latest
 
@@ -71,12 +73,13 @@ jobs:
           # 健康检查
           echo "Performing health check..."
           sleep 5
-          if curl -f http://localhost:8080/health; then
+          if curl -f http://localhost:8988/health; then
             echo "✅ Deployment successful!"
           else
             echo "❌ Health check failed!"
             exit 1
           fi
+          '
 
   rollback:
     runs-on: ubuntu-latest
@@ -93,6 +96,8 @@ jobs:
         key: ${{ secrets.SSH_KEY }}
         port: ${{ secrets.PORT || 22 }}
         script: |
+          # 使用bash执行脚本
+          bash -c '
           CONTAINER_NAME="dev_ctr_hello_app"
 
           echo "Rolling back deployment..."
@@ -114,3 +119,4 @@ jobs:
             echo "❌ Rollback failed!"
             exit 1
           fi
+          '
