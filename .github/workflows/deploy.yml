@@ -80,7 +80,7 @@ jobs:
         timeout: 30s
         command_timeout: 10m
         script: |
-          # 使用bash执行脚本
+          # 使用bash执行脚本  
           bash -c '
           # 设置变量
           VERSION="${{ steps.get_version.outputs.version }}"
