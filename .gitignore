@@ -48,3 +48,6 @@ bin/
 
 # Log files
 *.log
+
+# VERSION file (should only be in deploy branch)
+VERSION
