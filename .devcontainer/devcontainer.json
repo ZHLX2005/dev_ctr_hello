@@ -1,0 +1,54 @@
+{
+    "name": "Go DevContainer",
+    // 使用 Dockerfile 构建而不是直接拉取镜像
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": ".."
+    },
+
+    // VSCode 自定义配置
+    "customizations": {
+        "vscode": {
+            // 自动安装的扩展
+            "extensions": [
+                "golang.go"                    // Go 官方扩展
+            ],
+            // VSCode 设置
+            "settings": {
+                "go.toolsManagement.checkForUpdates": "local",
+                "go.useLanguageServer": true,
+                "go.gopath": "",
+                "go.goroot": "/usr/local/go",
+                "files.autoSave": "afterDelay",
+                "files.autoSaveDelay": 1000,
+                "editor.formatOnSave": true,
+                "terminal.integrated.shell.linux": "/bin/bash"
+            }
+        }
+    },
+
+    // 转发端口
+    "forwardPorts": [8080],
+    "portsAttributes": {
+        "8080": {
+            "label": "Gin App",
+            "onAutoForward": "notify"
+        }
+    },
+
+    // 容器创建后执行的命令
+    "postCreateCommand": "go version && echo 'Go environment ready!'",
+
+    // 更新内容时执行的命令
+    "updateContentCommand": "go mod tidy",
+
+    // 环境变量
+    "containerEnv": {
+        "GOPROXY": "https://goproxy.cn,direct",
+        "GO111MODULE": "on",
+        "GIN_MODE": "debug"
+    },
+
+    // 远程用户
+    "remoteUser": "vscode"
+}
