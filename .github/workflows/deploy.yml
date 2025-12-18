@@ -1,10 +1,9 @@
 name: Deploy
 
 on:
-  workflow_run:
-    workflows: ["CI/CD"]
-    types:
-      - completed
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       environment:
@@ -24,44 +23,39 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment || 'production' }}
 
-    # 只有当CI/CD成功且是tag推送时才部署
-    if: |
-      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == '') ||
-      github.event_name == 'workflow_dispatch'
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      with:
-        fetch-depth: 0  # 获取所有历史记录，包括tags
 
-    - name: Get version from tag
+    - name: Get version
       id: get_version
       run: |
         if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
           # 手动触发时使用输入的版本
           VERSION="${{ github.event.inputs.version }}"
         else
-          # 自动触发时从workflow_run获取tag
-          # 检查是否是tag推送
-          REF="${{ github.event.workflow_run.head_branch }}"
-          SHA="${{ github.event.workflow_run.head_sha }}"
-
-          # 获取该commit对应的所有tag
-          VERSIONS=$(git tag --points-at $SHA 2>/dev/null || true)
-
-          if [ -z "$VERSIONS" ]; then
-            echo "No tag found for commit $SHA, skipping deployment"
-            echo "skip=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          # 使用最新的tag（如果有多个）
-          VERSION=$(echo "$VERSIONS" | tail -n 1)
+          # 自动触发时从ref获取tag
+          VERSION="${{ github.ref_name }}"
         fi
 
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "Deploying version: $VERSION"
+
+    - name: Wait for Docker image
+      run: |
+        echo "Waiting for Docker image to be available..."
+        VERSION="${{ steps.get_version.outputs.version }}"
+        IMAGE_NAME="i718blu36dcakm-ghcr.xuanyuan.run/zhlx2005/dev_ctr_hello"
+
+        # 等待镜像可用，最多等待5分钟
+        for i in {1..30}; do
+          if docker pull $IMAGE_NAME:$VERSION 2>/dev/null; then
+            echo "Image is available"
+            break
+          fi
+          echo "Waiting for image... ($i/30)"
+          sleep 10
+        done
 
     - name: Deploy to server via SSH
       if: steps.get_version.outputs.skip != 'true'
