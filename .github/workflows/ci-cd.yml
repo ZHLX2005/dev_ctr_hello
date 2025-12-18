@@ -42,11 +42,13 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
+    - name: Prepare environment
+      run: |
+        echo "REPO_OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
-      env:
-        REPO_NAME: ${{ github.event.repository.name }}
       with:
         context: .
         push: true
-        tags: ghcr.io/${{ github.repository_owner }}/dev_ctr_hello:latest
+        tags: ghcr.io/${{ env.REPO_OWNER }}/dev_ctr_hello:latest
