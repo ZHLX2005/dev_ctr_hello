@@ -1,0 +1,116 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI/CD"]
+    types:
+      - completed
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+        - production
+        - staging
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    environment: ${{ github.event.inputs.environment || 'production' }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Deploy to server via SSH
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSH_KEY }}
+        port: ${{ secrets.PORT || 22 }}
+        timeout: 30s
+        command_timeout: 10m
+        script: |
+          # 设置变量
+          IMAGE_NAME="ghcr.io/zhlx2005/dev_ctr_hello"
+          CONTAINER_NAME="dev_ctr_hello_app"
+
+          # 获取最新镜像
+          echo "Pulling latest image..."
+          docker pull $IMAGE_NAME:latest
+
+          # 停止并删除旧容器
+          echo "Stopping old container..."
+          if docker ps -q -f name=$CONTAINER_NAME | grep -q .; then
+            docker stop $CONTAINER_NAME
+            docker rm $CONTAINER_NAME
+          fi
+
+          # 启动新容器
+          echo "Starting new container..."
+          docker run -d \
+            --name $CONTAINER_NAME \
+            -p 8080:8080 \
+            --restart unless-stopped \
+            $IMAGE_NAME:latest
+
+          # 清理未使用的镜像
+          echo "Cleaning up unused images..."
+          docker image prune -f
+
+          # 显示运行状态
+          echo "Container status:"
+          docker ps | grep $CONTAINER_NAME
+
+          # 健康检查
+          echo "Performing health check..."
+          sleep 5
+          if curl -f http://localhost:8080/health; then
+            echo "✅ Deployment successful!"
+          else
+            echo "❌ Health check failed!"
+            exit 1
+          fi
+
+  rollback:
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: failure()
+    environment: production
+
+    steps:
+    - name: Rollback deployment
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSH_KEY }}
+        port: ${{ secrets.PORT || 22 }}
+        script: |
+          CONTAINER_NAME="dev_ctr_hello_app"
+
+          echo "Rolling back deployment..."
+
+          # 尝试重启容器
+          if docker ps -a -q -f name=$CONTAINER_NAME | grep -q .; then
+            docker restart $CONTAINER_NAME
+            echo "Container restarted"
+          else
+            echo "No container found to rollback"
+            exit 1
+          fi
+
+          # 检查状态
+          sleep 5
+          if curl -f http://localhost:8080/health; then
+            echo "✅ Rollback successful!"
+          else
+            echo "❌ Rollback failed!"
+            exit 1
+          fi
