@@ -31,8 +31,8 @@ func main() {
 	// 健康检查端点
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"status": "ok",
-			"message": "Service is running",
+			"status":  "ok",
+			"message": "Service is 测试版本号",
 		})
 	})
 
@@ -75,7 +75,7 @@ func main() {
 				id := c.Param("id")
 				c.JSON(http.StatusOK, gin.H{
 					"user_id": id,
-					"name": "User " + id,
+					"name":    "User " + id,
 				})
 			})
 
@@ -89,7 +89,7 @@ func main() {
 				}
 				c.JSON(http.StatusCreated, gin.H{
 					"message": "User created successfully",
-					"name": json.Name,
+					"name":    json.Name,
 				})
 			})
 		}
