@@ -32,7 +32,7 @@ func main() {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":  "ok",
-			"message": "Service is 测试deploy分支",
+			"message": "Service is 测试deploy分支 版本号发生更新",
 		})
 	})
 
