@@ -5,7 +5,6 @@ on:
     workflows: ["CI/CD"]
     types:
       - completed
-    branches: [main, develop]
   workflow_dispatch:
     inputs:
       environment:
@@ -16,18 +15,56 @@ on:
         options:
         - production
         - staging
+      version:
+        description: 'Version to deploy (format: v1.0.0)'
+        required: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     environment: ${{ github.event.inputs.environment || 'production' }}
+
+    # 只有当CI/CD成功且是tag推送时才部署
+    if: |
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == '') ||
+      github.event_name == 'workflow_dispatch'
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # 获取所有历史记录，包括tags
+
+    - name: Get version from tag
+      id: get_version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          # 手动触发时使用输入的版本
+          VERSION="${{ github.event.inputs.version }}"
+        else
+          # 自动触发时从workflow_run获取tag
+          # 检查是否是tag推送
+          REF="${{ github.event.workflow_run.head_branch }}"
+          SHA="${{ github.event.workflow_run.head_sha }}"
+
+          # 获取该commit对应的所有tag
+          VERSIONS=$(git tag --points-at $SHA 2>/dev/null || true)
+
+          if [ -z "$VERSIONS" ]; then
+            echo "No tag found for commit $SHA, skipping deployment"
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # 使用最新的tag（如果有多个）
+          VERSION=$(echo "$VERSIONS" | tail -n 1)
+        fi
+
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Deploying version: $VERSION"
 
     - name: Deploy to server via SSH
+      if: steps.get_version.outputs.skip != 'true'
       uses: appleboy/ssh-action@v1.0.3
       with:
         host: ${{ secrets.HOST }}
@@ -40,12 +77,13 @@ jobs:
           # 使用bash执行脚本
           bash -c '
           # 设置变量
-          IMAGE_NAME="ghcr.io/zhlx2005/dev_ctr_hello"
+          VERSION="${{ steps.get_version.outputs.version }}"
+          IMAGE_NAME="i718blu36dcakm-ghcr.xuanyuan.run/zhlx2005/dev_ctr_hello"
           CONTAINER_NAME="dev_ctr_hello_app"
 
-          # 获取最新镜像
-          echo "Pulling latest image..."
-          docker pull $IMAGE_NAME:latest
+          # 获取指定版本的镜像
+          echo "Pulling image version: $VERSION"
+          docker pull $IMAGE_NAME:$VERSION
 
           # 停止并删除旧容器
           echo "Stopping old container..."
@@ -55,16 +93,13 @@ jobs:
           fi
 
           # 启动新容器
-          echo "Starting new container..."
+          echo "Starting new container with version: $VERSION"
           docker run -d \
             --name $CONTAINER_NAME \
             -p 8988:8080 \
             --restart unless-stopped \
-            $IMAGE_NAME:latest
-
-          # 清理未使用的镜像
-          echo "Cleaning up unused images..."
-          docker image prune -f
+            -e VERSION=$VERSION \
+            $IMAGE_NAME:$VERSION
 
           # 显示运行状态
           echo "Container status:"
@@ -74,7 +109,7 @@ jobs:
           echo "Performing health check..."
           sleep 5
           if curl -f http://localhost:8988/health; then
-            echo "✅ Deployment successful!"
+            echo "✅ Deployment successful! Version: $VERSION"
           else
             echo "❌ Health check failed!"
             exit 1
@@ -113,7 +148,7 @@ jobs:
 
           # 检查状态
           sleep 5
-          if curl -f http://localhost:8080/health; then
+          if curl -f http://localhost:8988/health; then
             echo "✅ Rollback successful!"
           else
             echo "❌ Rollback failed!"
