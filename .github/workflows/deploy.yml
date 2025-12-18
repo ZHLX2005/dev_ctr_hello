@@ -45,8 +45,32 @@ jobs:
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "Deploying version: $VERSION"
 
-    - name: Deploy to server via SSH
-      if: steps.get_version.outputs.skip != 'true'
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        load: true  # 加载到本地环境
+        tags: dev_ctr_hello:${{ steps.get_version.outputs.version }}
+
+    - name: Save Docker image
+      run: |
+        docker save dev_ctr_hello:${{ steps.get_version.outputs.version }} | gzip > app.tar.gz
+
+    - name: Copy image to server
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSH_KEY }}
+        port: ${{ secrets.PORT || 22 }}
+        source: "app.tar.gz"
+        target: "~/"
+        strip_components: 0
+
+    - name: Load and run image on server
       uses: appleboy/ssh-action@v1.0.3
       with:
         host: ${{ secrets.HOST }}
@@ -60,12 +84,15 @@ jobs:
           bash -c '
           # 设置变量
           VERSION="${{ steps.get_version.outputs.version }}"
-          IMAGE_NAME="i718blu36dcakm-ghcr.xuanyuan.run/zhlx2005/dev_ctr_hello"
+          IMAGE_NAME="dev_ctr_hello"
           CONTAINER_NAME="dev_ctr_hello_app"
 
-          # 获取指定版本的镜像
-          echo "Pulling image version: $VERSION"
-          docker pull $IMAGE_NAME:$VERSION
+          # 加载新镜像
+          echo "Loading new image..."
+          docker load < app.tar.gz
+
+          # 清理压缩文件
+          rm app.tar.gz
 
           # 停止并删除旧容器
           echo "Stopping old container..."
