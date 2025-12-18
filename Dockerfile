@@ -4,8 +4,8 @@ FROM golang:1.21-alpine AS builder
 # 设置工作目录
 WORKDIR /app
 
-# 安装必要的包
-RUN apk add --no-cache git
+# 配置Go代理以加速下载
+ENV GOPROXY=https://goproxy.cn,direct
 
 # 复制 go mod 文件
 COPY go.mod go.sum ./
@@ -22,11 +22,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
 # 运行阶段
 FROM alpine:latest
 
-# 安装 ca-certificates 用于 HTTPS 请求
-RUN apk --no-cache add ca-certificates
-
 # 设置工作目录
-WORKDIR /root/
+WORKDIR /app
 
 # 从构建阶段复制二进制文件
 COPY --from=builder /app/main .
