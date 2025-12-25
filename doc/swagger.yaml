@@ -1,0 +1,382 @@
+openapi: 3.0.3
+info:
+  title: File Server API
+  description: |
+    A private file server for uploading and managing temporary files, optimized for LLM processing.
+
+    ## Authentication
+
+    Upload and delete endpoints require Bearer token authentication:
+
+    ```
+    Authorization: Bearer <your-token>
+    ```
+
+    ## Features
+
+    - File upload with configurable expiration time
+    - Direct file download via public URL
+    - Automatic cleanup of expired files
+    - File metadata retrieval
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+  - url: http://localhost:8988
+    description: Production server (deployed)
+
+tags:
+  - name: health
+    description: Health check endpoints
+  - name: files
+    description: File management endpoints
+
+paths:
+  /health:
+    get:
+      tags:
+        - health
+      summary: Health check
+      description: Check if the server is running
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+                version: "1.0.0"
+
+  /api/v1/upload:
+    post:
+      tags:
+        - files
+      summary: Upload a file
+      description: |
+        Upload a file to the server. The file will be stored with a configurable expiration time.
+
+        **Authentication required:** Bearer token
+      operationId: uploadFile
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UploadRequest'
+      responses:
+        '200':
+          description: File uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+              example:
+                id: "a1b2c3d4e5f6789012345678"
+                name: "document.pdf"
+                size: 12345
+                content_type: "application/pdf"
+                upload_time: "2025-12-25T10:30:00Z"
+                expires_at: "2025-12-25T11:30:00Z"
+                download_url: "http://localhost:8080/api/v1/download/a1b2c3d4e5f6789012345678"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/download/{fileId}:
+    get:
+      tags:
+        - files
+      summary: Download a file
+      description: Download a file by its ID. No authentication required.
+      operationId: downloadFile
+      parameters:
+        - $ref: '#/components/parameters/FileId'
+      responses:
+        '200':
+          description: File content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Content-Type:
+              description: File MIME type
+              schema:
+                type: string
+            Content-Disposition:
+              description: Download disposition
+              schema:
+                type: string
+            X-File-Name:
+              description: Original filename
+              schema:
+                type: string
+            X-Upload-Time:
+              description: Upload time
+              schema:
+                type: string
+                format: date-time
+            X-Expires-At:
+              description: Expiration time
+              schema:
+                type: string
+                format: date-time
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/file/{fileId}/metadata:
+    get:
+      tags:
+        - files
+      summary: Get file metadata
+      description: Get metadata for a file by its ID. No authentication required.
+      operationId: getFileMetadata
+      parameters:
+        - $ref: '#/components/parameters/FileId'
+      responses:
+        '200':
+          description: File metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileMetadata'
+              example:
+                id: "a1b2c3d4e5f6789012345678"
+                name: "document.pdf"
+                size: 12345
+                content_type: "application/pdf"
+                upload_time: "2025-12-25T10:30:00Z"
+                expires_at: "2025-12-25T11:30:00Z"
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/file/{fileId}:
+    delete:
+      tags:
+        - files
+      summary: Delete a file
+      description: |
+        Delete a file by its ID.
+
+        **Authentication required:** Bearer token
+      operationId: deleteFile
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FileId'
+      responses:
+        '200':
+          description: File deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteResponse'
+              example:
+                message: "file deleted successfully"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API Token
+      description: |
+        Enter the token with the `Bearer ` prefix, e.g. "Bearer your-secret-token"
+
+  parameters:
+    FileId:
+      name: fileId
+      in: path
+      required: true
+      description: The unique identifier of the file
+      schema:
+        type: string
+        format: uuid
+      example: "a1b2c3d4e5f6789012345678"
+
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        version:
+          type: string
+      required:
+        - status
+        - version
+
+    UploadRequest:
+      type: object
+      required:
+        - file
+      properties:
+        file:
+          type: string
+          format: binary
+          description: The file to upload
+        ttl:
+          type: string
+          description: |
+            Expiration time duration (e.g., "1h", "30m", "24h")
+            Default is 1 hour
+          pattern: '^\d+[hms]$'
+          example: "2h"
+
+    UploadResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique file identifier
+        name:
+          type: string
+          description: Original filename
+        size:
+          type: integer
+          format: int64
+          description: File size in bytes
+        content_type:
+          type: string
+          description: File MIME type
+        upload_time:
+          type: string
+          format: date-time
+          description: Upload timestamp
+        expires_at:
+          type: string
+          format: date-time
+          description: Expiration timestamp
+        download_url:
+          type: string
+          format: uri
+          description: Direct download URL
+      required:
+        - id
+        - name
+        - size
+        - content_type
+        - upload_time
+        - expires_at
+        - download_url
+
+    FileMetadata:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique file identifier
+        name:
+          type: string
+          description: Original filename
+        size:
+          type: integer
+          format: int64
+          description: File size in bytes
+        content_type:
+          type: string
+          description: File MIME type
+        upload_time:
+          type: string
+          format: date-time
+          description: Upload timestamp
+        expires_at:
+          type: string
+          format: date-time
+          description: Expiration timestamp
+      required:
+        - id
+        - name
+        - size
+        - content_type
+        - upload_time
+        - expires_at
+
+    DeleteResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+      required:
+        - error
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "file is required"
+
+    Unauthorized:
+      description: Unauthorized - Invalid or missing token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "invalid token"
+
+    NotFound:
+      description: File not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "file not found"
+
+    Gone:
+      description: File has expired
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "file has expired"
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "internal server error"

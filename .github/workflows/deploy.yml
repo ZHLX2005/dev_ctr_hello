@@ -87,7 +87,7 @@ jobs:
           CONTAINER_NAME="file-server"
           STORAGE_DIR="~/file-server-storage"
           AUTH_TOKEN="${{ secrets.AUTH_TOKEN }}"
-          DEFAULT_TTL="${{ secrets.DEFAULT_TTL || "1h" }}"
+          DEFAULT_TTL="1h" 
 
           # Create storage directory
           mkdir -p $STORAGE_DIR
