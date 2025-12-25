@@ -21,6 +21,7 @@ type AuthMiddleware struct {
 // NewAuthMiddleware 创建认证中间件
 func NewAuthMiddleware(token string) *AuthMiddleware {
 	return &AuthMiddleware{
+
 		token: token,
 	}
 }
