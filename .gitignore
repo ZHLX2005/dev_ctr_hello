@@ -46,6 +46,9 @@ bin/
 .env.local
 .env.*.local
 
+# File server storage
+storage/
+
 # Log files
 *.log
 

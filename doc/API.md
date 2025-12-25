@@ -1,66 +1,50 @@
-# 文件服务器 API 文档
+# File Server API Documentation
 
-## 概述
+## Overview
 
-这是一个私有文件服务器，用于上传和管理临时文件，支持大模型识别。文件具有可配置的过期时间，默认为 1 小时。
+A private file server for uploading and managing temporary files, optimized for LLM processing. Files have configurable expiration time, default is 1 hour.
 
-**服务地址**: `http://localhost:8080`
+**Server URL**: `http://localhost:8080`
 
-**版本**: v1.0.0
-
----
-
-## 环境变量配置
-
-| 变量名 | 说明 | 默认值 |
-|--------|------|--------|
-| `PORT` | 服务端口 | `8080` |
-| `DEFAULT_TTL` | 文件默认过期时间 | `1h` |
-| `PUBLIC_KEY_PATH` | 公钥文件路径 | `/app/keys/public.pem` |
-| `STORAGE_DIR` | 文件存储目录 | `/app/storage` |
+**Version**: v1.0.0
 
 ---
 
-## 认证机制
+## Environment Variables
 
-### 签名验证
-
-上传和删除接口需要使用 RSA 签名进行认证。
-
-#### 签名生成方式
-
-待签名字符串格式:
-```
-METHOD:PATH:TIMESTAMP
-```
-
-- `METHOD`: HTTP 方法（如 `POST`）
-- `PATH`: 请求路径（如 `/api/v1/upload`）
-- `TIMESTAMP`: RFC3339 格式的时间戳
-
-#### 请求头
-
-| 头名称 | 说明 |
-|--------|------|
-| `X-Signature` | Base64 编码的 RSA 签名 |
-| `X-Timestamp` | RFC3339 格式的时间戳 |
-
-#### 签名时间容差
-
-签名时间容差为 ±5 分钟，超过该时间范围的请求将被拒绝。
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PORT` | Server port | `8080` |
+| `AUTH_TOKEN` | Authentication token | `your-secret-token-change-me` |
+| `DEFAULT_TTL` | Default file expiration time | `1h` |
+| `STORAGE_DIR` | File storage directory | `/app/storage` |
 
 ---
 
-## API 接口
+## Authentication
 
-### 1. 健康检查
+### Bearer Token
 
-**请求**
+Upload and delete endpoints require Bearer token authentication.
+
+#### Request Header
+
+| Header | Description |
+|--------|-------------|
+| `Authorization` | Bearer token (format: `Bearer <token>`) |
+
+---
+
+## API Endpoints
+
+### 1. Health Check
+
+**Request**
 ```
 GET /health
 ```
 
-**响应**
+**Response**
 ```json
 {
   "status": "ok",
@@ -70,25 +54,24 @@ GET /health
 
 ---
 
-### 2. 上传文件
+### 2. Upload File
 
-**需要认证**
+**Authentication Required**
 
-**请求**
+**Request**
 ```
 POST /api/v1/upload
 Content-Type: multipart/form-data
-X-Signature: <签名>
-X-Timestamp: <时间戳>
+Authorization: Bearer <your-token>
 ```
 
-**表单参数**
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `file` | File | 是 | 要上传的文件 |
-| `ttl` | String | 否 | 过期时间（如 `2h`、`30m`），默认使用配置的默认值 |
+**Form Parameters**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `file` | File | Yes | File to upload |
+| `ttl` | String | No | Expiration time (e.g., `2h`, `30m`), uses default if not specified |
 
-**成功响应** (200)
+**Success Response** (200)
 ```json
 {
   "id": "a1b2c3d4e5f6...",
@@ -101,66 +84,66 @@ X-Timestamp: <时间戳>
 }
 ```
 
-**错误响应**
-| 状态码 | 说明 |
-|--------|------|
-| 400 | 文件参数缺失 |
-| 401 | 签名验证失败或时间戳无效 |
-| 500 | 服务器内部错误 |
+**Error Responses**
+| Status | Description |
+|--------|-------------|
+| 400 | File parameter missing |
+| 401 | Invalid or missing token |
+| 500 | Internal server error |
 
 ---
 
-### 3. 下载文件
+### 3. Download File
 
-**不需要认证**
+**No Authentication Required**
 
-**请求**
+**Request**
 ```
 GET /api/v1/download/:id
 ```
 
-**路径参数**
-| 参数 | 说明 |
-|------|------|
-| `id` | 文件 ID |
+**Path Parameters**
+| Parameter | Description |
+|-----------|-------------|
+| `id` | File ID |
 
-**成功响应** (200)
-- 返回文件二进制内容
+**Success Response** (200)
+- Returns file binary content
 
-**响应头**
-| 头名称 | 说明 |
-|--------|------|
-| `Content-Type` | 文件 MIME 类型 |
-| `Content-Disposition` | 文件下载 disposition |
-| `Content-Length` | 文件大小 |
-| `X-File-Name` | 原始文件名 |
-| `X-Upload-Time` | 上传时间 |
-| `X-Expires-At` | 过期时间 |
+**Response Headers**
+| Header | Description |
+|--------|-------------|
+| `Content-Type` | File MIME type |
+| `Content-Disposition` | Download disposition |
+| `Content-Length` | File size |
+| `X-File-Name` | Original filename |
+| `X-Upload-Time` | Upload time |
+| `X-Expires-At` | Expiration time |
 
-**错误响应**
-| 状态码 | 说明 |
-|--------|------|
-| 404 | 文件不存在 |
-| 410 | 文件已过期 |
-| 500 | 服务器内部错误 |
+**Error Responses**
+| Status | Description |
+|--------|-------------|
+| 404 | File not found |
+| 410 | File has expired |
+| 500 | Internal server error |
 
 ---
 
-### 4. 获取文件元数据
+### 4. Get File Metadata
 
-**不需要认证**
+**No Authentication Required**
 
-**请求**
+**Request**
 ```
 GET /api/v1/file/:id/metadata
 ```
 
-**路径参数**
-| 参数 | 说明 |
-|------|------|
-| `id` | 文件 ID |
+**Path Parameters**
+| Parameter | Description |
+|-----------|-------------|
+| `id` | File ID |
 
-**成功响应** (200)
+**Success Response** (200)
 ```json
 {
   "id": "a1b2c3d4e5f6...",
@@ -172,233 +155,209 @@ GET /api/v1/file/:id/metadata
 }
 ```
 
-**错误响应**
-| 状态码 | 说明 |
-|--------|------|
-| 404 | 文件不存在 |
-| 410 | 文件已过期 |
-| 500 | 服务器内部错误 |
+**Error Responses**
+| Status | Description |
+|--------|-------------|
+| 404 | File not found |
+| 410 | File has expired |
+| 500 | Internal server error |
 
 ---
 
-### 5. 删除文件
+### 5. Delete File
 
-**需要认证**
+**Authentication Required**
 
-**请求**
+**Request**
 ```
 DELETE /api/v1/file/:id
-X-Signature: <签名>
-X-Timestamp: <时间戳>
+Authorization: Bearer <your-token>
 ```
 
-**路径参数**
-| 参数 | 说明 |
-|------|------|
-| `id` | 文件 ID |
+**Path Parameters**
+| Parameter | Description |
+|-----------|-------------|
+| `id` | File ID |
 
-**成功响应** (200)
+**Success Response** (200)
 ```json
 {
   "message": "file deleted successfully"
 }
 ```
 
-**错误响应**
-| 状态码 | 说明 |
-|--------|------|
-| 401 | 签名验证失败或时间戳无效 |
-| 500 | 服务器内部错误 |
+**Error Responses**
+| Status | Description |
+|--------|-------------|
+| 401 | Invalid or missing token |
+| 500 | Internal server error |
 
 ---
 
-## 使用示例
+## Usage Examples
 
-### cURL 示例
+### cURL Examples
 
-#### 上传文件
+#### Upload File
 ```bash
-# 首先计算签名（需要私钥）
-TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-SIGN_DATA="POST:/api/v1/upload:${TIMESTAMP}"
-SIGNATURE=$(echo -n "$SIGN_DATA" | openssl dgst -sha256 -sign private.pem -base64)
-
-# 上传文件
 curl -X POST http://localhost:8080/api/v1/upload \
-  -H "X-Signature: $SIGNATURE" \
-  -H "X-Timestamp: $TIMESTAMP" \
+  -H "Authorization: Bearer your-secret-token-change-me" \
   -F "file=@document.pdf" \
   -F "ttl=2h"
 ```
 
-#### 下载文件
+#### Download File
 ```bash
 curl -O http://localhost:8080/api/v1/download/a1b2c3d4e5f6...
 ```
 
-#### 获取文件元数据
+#### Get File Metadata
 ```bash
 curl http://localhost:8080/api/v1/file/a1b2c3d4e5f6.../metadata
 ```
 
-### Go 客户端示例
+#### Delete File
+```bash
+curl -X DELETE http://localhost:8080/api/v1/file/a1b2c3d4e5f6... \
+  -H "Authorization: Bearer your-secret-token-change-me"
+```
+
+### Go Client Example
 
 ```go
 package main
 
 import (
     "bytes"
-    "crypto/rsa"
-    "crypto/sha256"
-    "crypto/x509"
-    "encoding/pem"
     "fmt"
     "io"
     "mime/multipart"
     "net/http"
     "os"
-    "time"
+)
 
-    "dev_ctr_hello/pkg/auth"
+const (
+    serverURL = "http://localhost:8080"
+    authToken = "your-secret-token-change-me"
 )
 
 func main() {
-    // 加载私钥
-    privateKey, _ := auth.LoadPrivateKey("keys/private.pem")
-
-    // 上传文件
-    uploadFile(privateKey)
+    uploadFile("document.pdf")
 }
 
-func uploadFile(privateKey *rsa.PrivateKey) {
-    // 准备文件
-    file, _ := os.Open("document.pdf")
+func uploadFile(filePath string) {
+    // Open file
+    file, _ := os.Open(filePath)
     defer file.Close()
 
-    // 创建请求体
+    // Create request body
     body := &bytes.Buffer{}
     writer := multipart.NewWriter(body)
-    part, _ := writer.CreateFormFile("file", "document.pdf")
+    part, _ := writer.CreateFormFile("file", filePath)
     io.Copy(part, file)
     writer.WriteField("ttl", "2h")
     writer.Close()
 
-    // 生成签名
-    timestamp := time.Now().Format(time.RFC3339)
-    signData := auth.GenerateSignData("POST", "/api/v1/upload", "", timestamp, "")
-    signature, _ := auth.SignWithKey([]byte(signData), privateKey)
-
-    // 发送请求
-    req, _ := http.NewRequest("POST", "http://localhost:8080/api/v1/upload", body)
+    // Create request
+    req, _ := http.NewRequest("POST", serverURL+"/api/v1/upload", body)
     req.Header.Set("Content-Type", writer.FormDataContentType())
-    req.Header.Set("X-Signature", signature)
-    req.Header.Set("X-Timestamp", timestamp)
+    req.Header.Set("Authorization", "Bearer "+authToken)
 
+    // Send request
     client := &http.Client{}
-    resp, _ := client.Do(req)
+    resp, err := client.Do(req)
+    if err != nil {
+        fmt.Printf("Request failed: %v\n", err)
+        return
+    }
     defer resp.Body.Close()
 
-    // 处理响应...
+    // Handle response...
 }
 ```
 
-### Python 客户端示例
+### Python Client Example
 
 ```python
 import requests
-import time
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.backends import default_backend
-import base64
 
-# 加载私钥
-with open('keys/private.pem', 'rb') as f:
-    private_key = serialization.load_pem_private_key(
-        f.read(),
-        password=None,
-        backend=default_backend()
+SERVER_URL = "http://localhost:8080"
+AUTH_TOKEN = "your-secret-token-change-me"
+
+# Upload file
+with open('document.pdf', 'rb') as f:
+    files = {'file': f}
+    data = {'ttl': '2h'}
+    headers = {'Authorization': f'Bearer {AUTH_TOKEN}'}
+
+    response = requests.post(
+        f'{SERVER_URL}/api/v1/upload',
+        files=files,
+        data=data,
+        headers=headers
     )
 
-# 生成签名
-timestamp = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
-sign_data = f'POST:/api/v1/upload:{timestamp}'
-signature = private_key.sign(
-    sign_data.encode(),
-    padding.PKCS1v15(),
-    hashes.SHA256()
-)
-signature_b64 = base64.b64encode(signature).decode()
+    print(response.json())
 
-# 上传文件
-files = {'file': open('document.pdf', 'rb')}
-data = {'ttl': '2h'}
-headers = {
-    'X-Signature': signature_b64,
-    'X-Timestamp': timestamp
-}
-
-response = requests.post(
-    'http://localhost:8080/api/v1/upload',
-    files=files,
-    data=data,
-    headers=headers
-)
-
-print(response.json())
+# Download file
+file_id = "a1b2c3d4e5f6..."
+response = requests.get(f'{SERVER_URL}/api/v1/download/{file_id}')
+with open('downloaded.pdf', 'wb') as f:
+    f.write(response.content)
 ```
 
 ---
 
-## 快速开始
+## Quick Start
 
-### 1. 生成密钥
+### 1. Configure Token
 
+Edit `.env` file and set your secure token:
 ```bash
-# Windows PowerShell
-powershell -ExecutionPolicy Bypass -File scripts\generate_keys.ps1
-
-# Linux/Mac/Git Bash
-bash scripts/generate_keys.sh
+AUTH_TOKEN=your-secure-random-token-here
 ```
 
-### 2. 启动服务
+### 2. Start Server
 
 ```bash
-# 使用 Make
+# Using Make
 make server-start
 
-# 或使用 Docker Compose
+# Or using Docker Compose
 docker-compose up -d
 ```
 
-### 3. 测试接口
+### 3. Test API
 
 ```bash
-# 健康检查
+# Health check
 curl http://localhost:8080/health
+
+# Upload file
+curl -X POST http://localhost:8080/api/v1/upload \
+  -H "Authorization: Bearer your-secure-random-token-here" \
+  -F "file=@test.txt"
 ```
 
 ---
 
-## 注意事项
+## Notes
 
-1. **私钥安全**: 私钥文件 (`private.pem`) 仅在客户端使用，切勿上传到服务器或提交到版本控制
-2. **公钥部署**: 公钥文件 (`public.pem`) 需要放置在服务器的 `/app/keys/` 目录
-3. **文件过期**: 文件默认 1 小时后过期，过期后无法访问
-4. **存储挂载**: 文件存储目录应挂载到宿主机，避免容器重启丢失数据
-5. **时间同步**: 客户端和服务器时间应保持同步，避免签名验证失败
+1. **Token Security**: Change the default `AUTH_TOKEN` to a secure random string before deployment
+2. **File Expiration**: Files expire after 1 hour by default (configurable via `DEFAULT_TTL`)
+3. **Storage Mount**: Mount the storage directory to host to persist data across container restarts
+4. **Public Endpoints**: Download and metadata endpoints are public (no authentication required)
 
 ---
 
-## 错误码
+## Error Codes
 
-| 状态码 | 说明 |
-|--------|------|
-| 200 | 请求成功 |
-| 204 | OPTIONS 预检请求成功 |
-| 400 | 请求参数错误 |
-| 401 | 认证失败（签名无效或时间戳过期） |
-| 404 | 文件不存在 |
-| 410 | 文件已过期 |
-| 500 | 服务器内部错误 |
+| Status | Description |
+|--------|-------------|
+| 200 | Success |
+| 204 | OPTIONS preflight success |
+| 400 | Bad request |
+| 401 | Unauthorized (invalid or missing token) |
+| 404 | File not found |
+| 410 | File has expired |
+| 500 | Internal server error |

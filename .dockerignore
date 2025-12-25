@@ -51,6 +51,5 @@ docs/
 .env.local
 .env.*.local
 
-# Keys and storage (mounted as volumes)
-keys/
+# Storage (mounted as volume)
 storage/

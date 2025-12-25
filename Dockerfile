@@ -31,8 +31,8 @@ WORKDIR /app
 # 从构建阶段复制二进制文件
 COPY --from=builder /app/main .
 
-# 创建密钥目录和存储目录
-RUN mkdir -p /app/keys /app/storage
+# 创建存储目录
+RUN mkdir -p /app/storage
 
 # 暴露端口
 EXPOSE 8080

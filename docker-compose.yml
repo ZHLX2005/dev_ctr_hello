@@ -10,13 +10,11 @@ services:
       - "${PORT:-8080}:8080"
     environment:
       - PORT=${PORT:-8080}
-      - PUBLIC_KEY_PATH=/app/keys/public.pem
+      - AUTH_TOKEN=${AUTH_TOKEN:-your-secret-token-change-me}
       - STORAGE_DIR=/app/storage
       - DEFAULT_TTL=${DEFAULT_TTL:-1h}
     volumes:
-      # 挂载公钥目录
-      - ./keys:/app/keys:ro
-      # 挂载文件存储目录
+      # Mount storage directory
       - ./storage:/app/storage
     restart: unless-stopped
     healthcheck:

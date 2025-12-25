@@ -20,7 +20,7 @@ const (
 func main() {
 	// 从环境变量获取配置
 	port := getEnv("PORT", "8080")
-	publicKeyPath := getEnv("PUBLIC_KEY_PATH", "/app/keys/public.pem")
+	authToken := getEnv("AUTH_TOKEN", "your-secret-token-change-me")
 	storageDir := getEnv("STORAGE_DIR", "/app/storage")
 	defaultTTLStr := getEnv("DEFAULT_TTL", "1h")
 
@@ -28,13 +28,6 @@ func main() {
 	defaultTTL, err := time.ParseDuration(defaultTTLStr)
 	if err != nil {
 		defaultTTL = 1 * time.Hour
-	}
-
-	// 初始化签名验证器
-	signatureValidator, err := auth.NewSignatureValidator(publicKeyPath)
-	if err != nil {
-		fmt.Printf("Failed to load public key: %v\n", err)
-		os.Exit(1)
 	}
 
 	// 初始化文件存储
@@ -55,8 +48,8 @@ func main() {
 	// 添加 CORS 中间件
 	r.Use(func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
-		c.Header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Content-Length, X-Signature, X-Timestamp")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Content-Length, Authorization")
 
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
@@ -67,7 +60,7 @@ func main() {
 	})
 
 	// 创建认证中间件
-	authMiddleware := auth.NewAuthMiddleware(signatureValidator)
+	authMiddleware := auth.NewAuthMiddleware(authToken)
 
 	// 健康检查端点
 	r.GET("/health", func(c *gin.Context) {
