@@ -137,12 +137,14 @@ func handleUpload(s *storage.Storage) gin.HandlerFunc {
 			return
 		}
 
-		// 构建下载URL
+		// 构建下载URL（包含文件扩展名）
 		scheme := "http"
 		if c.Request.TLS != nil {
 			scheme = "https"
 		}
-		downloadURL := fmt.Sprintf("%s://%s/api/v1/download/%s", scheme, c.Request.Host, metadata.ID)
+		// 拼接 ID 和扩展名作为下载 URL
+		downloadID := metadata.ID + metadata.Extension
+		downloadURL := fmt.Sprintf("%s://%s/api/v1/download/%s", scheme, c.Request.Host, downloadID)
 
 		c.JSON(200, gin.H{
 			"id":            metadata.ID,

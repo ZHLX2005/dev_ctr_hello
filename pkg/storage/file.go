@@ -30,6 +30,7 @@ type FileMetadata struct {
 	Name        string    `json:"name"`
 	Size        int64     `json:"size"`
 	ContentType string    `json:"content_type"`
+	Extension   string    `json:"extension"`   // 文件扩展名（包含点号，如 .png）
 	UploadTime  time.Time `json:"upload_time"`
 	ExpiresAt   time.Time `json:"expires_at"`
 }
@@ -103,12 +104,16 @@ func (s *Storage) Save(file multipart.File, header *multipart.FileHeader, ttl ti
 		return nil, fmt.Errorf("failed to write file: %w", err)
 	}
 
+	// 提取文件扩展名
+	ext := filepath.Ext(header.Filename)
+
 	// 创建元数据
 	metadata := &FileMetadata{
 		ID:          id,
 		Name:        header.Filename,
 		Size:        header.Size,
 		ContentType: header.Header.Get("Content-Type"),
+		Extension:   ext,
 		UploadTime:  time.Now(),
 		ExpiresAt:   expiresAt,
 	}
@@ -149,12 +154,16 @@ func (s *Storage) SaveFromReader(r io.Reader, filename, contentType string, size
 		return nil, fmt.Errorf("failed to write file: %w", err)
 	}
 
+	// 提取文件扩展名
+	ext := filepath.Ext(filename)
+
 	// 创建元数据
 	metadata := &FileMetadata{
 		ID:          id,
 		Name:        filename,
 		Size:        int64(len(content)),
 		ContentType: contentType,
+		Extension:   ext,
 		UploadTime:  time.Now(),
 		ExpiresAt:   expiresAt,
 	}
@@ -171,7 +180,10 @@ func (s *Storage) SaveFromReader(r io.Reader, filename, contentType string, size
 
 // Get 获取文件
 func (s *Storage) Get(id string) (*FileMetadata, []byte, error) {
-	metadata, err := s.getMetadata(id)
+	// 剥离可能的扩展名，获取纯净的 ID
+	cleanID := parseID(id)
+
+	metadata, err := s.getMetadata(cleanID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -179,12 +191,12 @@ func (s *Storage) Get(id string) (*FileMetadata, []byte, error) {
 	// 检查是否过期
 	if time.Now().After(metadata.ExpiresAt) {
 		// 异步删除过期文件
-		go s.Delete(id)
+		go s.Delete(cleanID)
 		return nil, nil, ErrFileExpired
 	}
 
 	// 读取文件内容
-	filePath := s.getFilePath(id)
+	filePath := s.getFilePath(cleanID)
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to read file: %w", err)
@@ -195,7 +207,9 @@ func (s *Storage) Get(id string) (*FileMetadata, []byte, error) {
 
 // GetMetadata 获取文件元数据
 func (s *Storage) GetMetadata(id string) (*FileMetadata, error) {
-	metadata, err := s.getMetadata(id)
+	cleanID := parseID(id)
+
+	metadata, err := s.getMetadata(cleanID)
 	if err != nil {
 		return nil, err
 	}
@@ -210,11 +224,13 @@ func (s *Storage) GetMetadata(id string) (*FileMetadata, error) {
 
 // Delete 删除文件
 func (s *Storage) Delete(id string) error {
+	cleanID := parseID(id)
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	metadataPath := s.getMetadataPath(id)
-	filePath := s.getFilePath(id)
+	metadataPath := s.getMetadataPath(cleanID)
+	filePath := s.getFilePath(cleanID)
 
 	// 删除元数据
 	os.Remove(metadataPath)
@@ -229,7 +245,8 @@ func (s *Storage) Delete(id string) error {
 
 // Exists 检查文件是否存在且未过期
 func (s *Storage) Exists(id string) bool {
-	metadata, err := s.GetMetadata(id)
+	cleanID := parseID(id)
+	metadata, err := s.GetMetadata(cleanID)
 	if err != nil {
 		return false
 	}
@@ -344,4 +361,26 @@ func generateID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// parseID 从带扩展名的 ID 中提取纯净的 ID
+// 例如: "a1b2c3d4.png" -> "a1b2c3d4"
+// 如果 ID 中没有扩展名，则返回原 ID
+func parseID(id string) string {
+	// 检查是否有点号（可能是扩展名）
+	if dotIdx := indexOfDot(id); dotIdx != -1 {
+		return id[:dotIdx]
+	}
+	return id
+}
+
+// indexOfDot 查找字符串中的点号位置
+// 排除作为路径分隔符的点（如 . 和 .. 的情况）
+func indexOfDot(s string) int {
+	for i := 1; i < len(s); i++ { // 从索引1开始，排除开头的点（隐藏文件）
+		if s[i] == '.' {
+			return i
+		}
+	}
+	return -1
 }
