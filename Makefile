@@ -18,8 +18,12 @@ GIT_COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME) -X main.GitCommit=$(GIT_COMMIT)"
 
 # Docker
-DOCKER_IMAGE=dev_ctr_hello
+DOCKER_IMAGE=file-server
 DOCKER_TAG=latest
+
+# Keys and storage
+KEYS_DIR=./keys
+STORAGE_DIR=./storage
 
 .PHONY: help
 help: ## 显示帮助信息
@@ -117,6 +121,54 @@ docker-push: ## 推送 Docker 镜像
 .PHONY: release
 release: clean test build ## 发布构建
 	@echo "准备发布版本: $(VERSION)"
+
+# ===== 文件服务器相关命令 =====
+
+.PHONY: keys-generate
+keys-generate: ## 生成 RSA 密钥对
+	@echo "生成 RSA 密钥对..."
+	@if exist "scripts\generate_keys.ps1" ( \
+		powershell -ExecutionPolicy Bypass -File scripts\generate_keys.ps1 \
+	) else ( \
+		bash scripts/generate_keys.sh \
+	)
+
+.PHONY: keys-setup
+keys-setup: ## 设置密钥目录
+	@mkdir -p $(KEYS_DIR) $(STORAGE_DIR)
+
+.PHONY: setup
+setup: keys-setup keys-generate ## 初始化文件服务器（生成密钥）
+	@echo "文件服务器初始化完成!"
+	@echo "公钥: $(KEYS_DIR)/public.pem"
+	@echo "私钥: $(KEYS_DIR)/private.pem"
+	@echo "注意: 请妥善保管私钥，不要提交到版本控制"
+
+.PHONY: docker-up
+docker-up: ## 启动 Docker Compose 服务
+	docker-compose up -d
+
+.PHONY: docker-down
+docker-down: ## 停止 Docker Compose 服务
+	docker-compose down
+
+.PHONY: docker-logs
+docker-logs: ## 查看 Docker Compose 日志
+	docker-compose logs -f
+
+.PHONY: docker-restart
+docker-restart: docker-down docker-up ## 重启 Docker Compose 服务
+
+.PHONY: server-start
+server-start: setup docker-up ## 启动文件服务器（首次运行会生成密钥）
+	@echo "文件服务器已启动!"
+	@echo "访问地址: http://localhost:8080"
+	@echo "健康检查: http://localhost:8080/health"
+
+.PHONY: clean-all
+clean-all: clean ## 清理所有文件（包括密钥和存储）
+	@echo "清理密钥和存储目录..."
+	@rm -rf $(KEYS_DIR) $(STORAGE_DIR)
 
 .PHONY: init
 init: ## 初始化项目

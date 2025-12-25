@@ -22,11 +22,17 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
 # 运行阶段
 FROM alpine:latest
 
+# 安装 ca-certificates 用于 HTTPS 请求
+RUN apk --no-cache add ca-certificates
+
 # 设置工作目录
 WORKDIR /app
 
 # 从构建阶段复制二进制文件
 COPY --from=builder /app/main .
+
+# 创建密钥目录和存储目录
+RUN mkdir -p /app/keys /app/storage
 
 # 暴露端口
 EXPOSE 8080

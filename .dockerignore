@@ -50,3 +50,7 @@ docs/
 # Local development
 .env.local
 .env.*.local
+
+# Keys and storage (mounted as volumes)
+keys/
+storage/
