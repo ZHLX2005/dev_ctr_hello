@@ -85,8 +85,9 @@ func main() {
 		// 上传文件（需要认证）
 		api.POST("/upload", authMiddleware.RequireAuth(), handleUpload(fileStorage))
 
-		// 下载文件（不需要认证）
-		api.GET("/download/:id", handleDownload(fileStorage))
+		// 下载文件（不需要认证）- 支持 GET 和 HEAD
+		api.Handle("GET", "/download/:id", handleDownload(fileStorage))
+		api.Handle("HEAD", "/download/:id", handleDownload(fileStorage))
 
 		// 获取文件元数据（不需要认证）
 		api.GET("/file/:id/metadata", handleGetMetadata(fileStorage))
@@ -188,6 +189,12 @@ func handleDownload(s *storage.Storage) gin.HandlerFunc {
 		c.Header("X-File-Name", metadata.Name)
 		c.Header("X-Upload-Time", metadata.UploadTime.Format(time.RFC3339))
 		c.Header("X-Expires-At", metadata.ExpiresAt.Format(time.RFC3339))
+
+		// HEAD 请求只返回响应头，不返回响应体
+		if c.Request.Method == "HEAD" {
+			c.Status(200)
+			return
+		}
 
 		// 返回文件内容
 		c.Data(200, metadata.ContentType, content)
