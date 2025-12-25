@@ -1,4 +1,4 @@
-name: Deploy
+name: Deploy File Server
 
 on:
   push:
@@ -30,14 +30,14 @@ jobs:
       id: get_version
       run: |
         if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-          # 手动触发时使用输入的版本
+          # Manual trigger - use input version
           VERSION="${{ github.event.inputs.version }}"
         else
-          # 自动触发时读取版本文件
+          # Auto trigger - read from VERSION file
           if [ -f "VERSION" ]; then
             VERSION=$(cat VERSION)
           else
-            # 获取最新的tag作为版本
+            # Get latest tag as version
             VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "latest")
           fi
         fi
@@ -52,12 +52,12 @@ jobs:
       uses: docker/build-push-action@v5
       with:
         context: .
-        load: true  # 加载到本地环境
-        tags: dev_ctr_hello:${{ steps.get_version.outputs.version }}
+        load: true
+        tags: file-server:${{ steps.get_version.outputs.version }}
 
     - name: Save Docker image
       run: |
-        docker save dev_ctr_hello:${{ steps.get_version.outputs.version }} | gzip > app.tar.gz
+        docker save file-server:${{ steps.get_version.outputs.version }} | gzip > app.tar.gz
 
     - name: Copy image to server
       uses: appleboy/scp-action@v0.1.7
@@ -80,47 +80,55 @@ jobs:
         timeout: 30s
         command_timeout: 10m
         script: |
-          # 使用bash执行脚本  
           bash -c '
-          # 设置变量
+          # Set variables
           VERSION="${{ steps.get_version.outputs.version }}"
-          IMAGE_NAME="dev_ctr_hello"
-          CONTAINER_NAME="dev_ctr_hello_app"
+          IMAGE_NAME="file-server"
+          CONTAINER_NAME="file-server"
+          STORAGE_DIR="~/file-server-storage"
+          AUTH_TOKEN="${{ secrets.AUTH_TOKEN }}"
+          DEFAULT_TTL="${{ secrets.DEFAULT_TTL || "1h" }}"
 
-          # 加载新镜像
+          # Create storage directory
+          mkdir -p $STORAGE_DIR
+
+          # Load new image
           echo "Loading new image..."
           docker load < app.tar.gz
 
-          # 清理压缩文件
+          # Clean up compressed file
           rm app.tar.gz
 
-          # 停止并删除旧容器
+          # Stop and remove old container
           echo "Stopping old container..."
           if docker ps -q -f name=$CONTAINER_NAME | grep -q .; then
             docker stop $CONTAINER_NAME
             docker rm $CONTAINER_NAME
           fi
 
-          # 启动新容器
+          # Start new container
           echo "Starting new container with version: $VERSION"
           docker run -d \
             --name $CONTAINER_NAME \
             -p 8988:8080 \
             --restart unless-stopped \
-            -e VERSION=$VERSION \
+            -v $STORAGE_DIR:/app/storage \
+            -e AUTH_TOKEN=$AUTH_TOKEN \
+            -e DEFAULT_TTL=$DEFAULT_TTL \
+            -e STORAGE_DIR=/app/storage \
             $IMAGE_NAME:$VERSION
 
-          # 显示运行状态
+          # Show container status
           echo "Container status:"
           docker ps | grep $CONTAINER_NAME
 
-          # 健康检查
+          # Health check
           echo "Performing health check..."
           sleep 5
           if curl -f http://localhost:8988/health; then
-            echo "✅ Deployment successful! Version: $VERSION"
+            echo "Deployment successful! Version: $VERSION"
           else
-            echo "❌ Health check failed!"
+            echo "Health check failed!"
             exit 1
           fi
           '
@@ -140,13 +148,12 @@ jobs:
         key: ${{ secrets.SSH_KEY }}
         port: ${{ secrets.PORT || 22 }}
         script: |
-          # 使用bash执行脚本
           bash -c '
-          CONTAINER_NAME="dev_ctr_hello_app"
+          CONTAINER_NAME="file-server"
 
           echo "Rolling back deployment..."
 
-          # 尝试重启容器
+          # Try to restart container
           if docker ps -a -q -f name=$CONTAINER_NAME | grep -q .; then
             docker restart $CONTAINER_NAME
             echo "Container restarted"
@@ -155,12 +162,12 @@ jobs:
             exit 1
           fi
 
-          # 检查状态
+          # Check status
           sleep 5
           if curl -f http://localhost:8988/health; then
-            echo "✅ Rollback successful!"
+            echo "Rollback successful!"
           else
-            echo "❌ Rollback failed!"
+            echo "Rollback failed!"
             exit 1
           fi
           '
