@@ -4,46 +4,15 @@ on:
   push:
     branches: [ deploy ]
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environment to deploy'
-        required: true
-        default: 'production'
-        type: choice
-        options:
-        - production
-        - staging
-      version:
-        description: 'Version to deploy (format: v1.0.0)'
-        required: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || 'production' }}
+    environment: production
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-
-    - name: Get version
-      id: get_version
-      run: |
-        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-          # Manual trigger - use input version
-          VERSION="${{ github.event.inputs.version }}"
-        else
-          # Auto trigger - read from VERSION file
-          if [ -f "VERSION" ]; then
-            VERSION=$(cat VERSION)
-          else
-            # Get latest tag as version
-            VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "latest")
-          fi
-        fi
-
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "Deploying version: $VERSION"
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -53,11 +22,13 @@ jobs:
       with:
         context: .
         load: true
-        tags: file-server:${{ steps.get_version.outputs.version }}
+        tags: file-server:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
 
     - name: Save Docker image
       run: |
-        docker save file-server:${{ steps.get_version.outputs.version }} | gzip > app.tar.gz
+        docker save file-server:latest | gzip > app.tar.gz
 
     - name: Copy image to server
       uses: appleboy/scp-action@v0.1.7
@@ -68,7 +39,6 @@ jobs:
         port: ${{ secrets.PORT || 22 }}
         source: "app.tar.gz"
         target: "~/"
-        strip_components: 0
 
     - name: Load and run image on server
       uses: appleboy/ssh-action@v1.0.3
@@ -82,12 +52,11 @@ jobs:
         script: |
           bash -c '
           # Set variables
-          VERSION="${{ steps.get_version.outputs.version }}"
           IMAGE_NAME="file-server"
           CONTAINER_NAME="file-server"
-          STORAGE_DIR="~/file-server-storage"
+          STORAGE_DIR="/opt/file-server-storage"
           AUTH_TOKEN="${{ secrets.AUTH_TOKEN }}"
-          DEFAULT_TTL="1h" 
+          DEFAULT_TTL="1h"
 
           # Create storage directory
           mkdir -p $STORAGE_DIR
@@ -101,13 +70,17 @@ jobs:
 
           # Stop and remove old container
           echo "Stopping old container..."
-          if docker ps -q -f name=$CONTAINER_NAME | grep -q .; then
-            docker stop $CONTAINER_NAME
-            docker rm $CONTAINER_NAME
+          if docker ps -q -f name=$CONTAINER_NAME 2>/dev/null | grep -q .; then
+            docker stop $CONTAINER_NAME 2>/dev/null || true
+            docker rm $CONTAINER_NAME 2>/dev/null || true
           fi
 
+          # Remove old image to free space
+          echo "Cleaning up old images..."
+          docker image prune -af --filter "until=24h" || true
+
           # Start new container
-          echo "Starting new container with version: $VERSION"
+          echo "Starting new container..."
           docker run -d \
             --name $CONTAINER_NAME \
             -p 8988:8080 \
@@ -116,58 +89,20 @@ jobs:
             -e AUTH_TOKEN=$AUTH_TOKEN \
             -e DEFAULT_TTL=$DEFAULT_TTL \
             -e STORAGE_DIR=/app/storage \
-            $IMAGE_NAME:$VERSION
+            $IMAGE_NAME:latest
 
           # Show container status
           echo "Container status:"
-          docker ps | grep $CONTAINER_NAME
+          docker ps -f name=$CONTAINER_NAME
 
           # Health check
           echo "Performing health check..."
           sleep 5
           if curl -f http://localhost:8988/health; then
-            echo "Deployment successful! Version: $VERSION"
+            echo "Deployment successful!"
           else
             echo "Health check failed!"
-            exit 1
-          fi
-          '
-
-  rollback:
-    runs-on: ubuntu-latest
-    needs: deploy
-    if: failure()
-    environment: production
-
-    steps:
-    - name: Rollback deployment
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.HOST }}
-        username: ${{ secrets.USERNAME }}
-        key: ${{ secrets.SSH_KEY }}
-        port: ${{ secrets.PORT || 22 }}
-        script: |
-          bash -c '
-          CONTAINER_NAME="file-server"
-
-          echo "Rolling back deployment..."
-
-          # Try to restart container
-          if docker ps -a -q -f name=$CONTAINER_NAME | grep -q .; then
-            docker restart $CONTAINER_NAME
-            echo "Container restarted"
-          else
-            echo "No container found to rollback"
-            exit 1
-          fi
-
-          # Check status
-          sleep 5
-          if curl -f http://localhost:8988/health; then
-            echo "Rollback successful!"
-          else
-            echo "Rollback failed!"
+            docker logs $CONTAINER_NAME --tail 50
             exit 1
           fi
           '
