@@ -17,7 +17,12 @@ const (
 	Version = "1.0.0"
 )
 
+// 启动时间
+var startTime time.Time
+
 func main() {
+	// 记录启动时间
+	startTime = time.Now()
 	// 从环境变量获取配置
 	port := getEnv("PORT", "8080")
 	authToken := getEnv("AUTH_TOKEN", "your-secret-token-change-me")
@@ -64,9 +69,13 @@ func main() {
 
 	// 健康检查端点
 	r.GET("/health", func(c *gin.Context) {
+		uptime := time.Since(startTime)
 		c.JSON(200, gin.H{
-			"status":  "ok",
-			"version": Version,
+			"status":       "ok",
+			"version":      Version,
+			"start_time":   startTime.Format(time.RFC3339),
+			"uptime":       uptime.String(),
+			"uptime_seconds": uptime.Seconds(),
 		})
 	})
 
