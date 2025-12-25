@@ -61,26 +61,35 @@ jobs:
           # Create storage directory
           mkdir -p $STORAGE_DIR
 
-          # Load new image
-          echo "Loading new image..."
+          # Step 1: Stop and remove old container
+          echo "Step 1: Stopping old container..."
+          if docker ps -q -f name=$CONTAINER_NAME 2>/dev/null | grep -q .; then
+            docker stop $CONTAINER_NAME
+            docker rm $CONTAINER_NAME
+            echo "Old container removed"
+          else
+            echo "No old container found"
+          fi
+
+          # Step 2: Remove old image (only file-server:latest)
+          echo "Step 2: Removing old image..."
+          if docker images -q $IMAGE_NAME:latest 2>/dev/null | grep -q .; then
+            docker rmi $IMAGE_NAME:latest -f
+            echo "Old image removed"
+          else
+            echo "No old image found"
+          fi
+
+          # Step 3: Load new image
+          echo "Step 3: Loading new image..."
           docker load < app.tar.gz
+          echo "New image loaded"
 
           # Clean up compressed file
           rm app.tar.gz
 
-          # Stop and remove old container
-          echo "Stopping old container..."
-          if docker ps -q -f name=$CONTAINER_NAME 2>/dev/null | grep -q .; then
-            docker stop $CONTAINER_NAME 2>/dev/null || true
-            docker rm $CONTAINER_NAME 2>/dev/null || true
-          fi
-
-          # Remove old image to free space
-          echo "Cleaning up old images..."
-          docker image prune -af --filter "until=24h" || true
-
-          # Start new container
-          echo "Starting new container..."
+          # Step 4: Start new container
+          echo "Step 4: Starting new container..."
           docker run -d \
             --name $CONTAINER_NAME \
             -p 8988:8080 \
@@ -96,7 +105,7 @@ jobs:
           docker ps -f name=$CONTAINER_NAME
 
           # Health check
-          echo "Performing health check..."
+          echo "Step 5: Health check..."
           sleep 5
           if curl -f http://localhost:8988/health; then
             echo "Deployment successful!"
